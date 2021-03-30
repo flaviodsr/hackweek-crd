@@ -1,0 +1,24 @@
+# permissions for end users to edit inferenceservices.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: inferenceservice-editor-role
+rules:
+- apiGroups:
+  - serving.fuseml.suse
+  resources:
+  - inferenceservices
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - serving.fuseml.suse
+  resources:
+  - inferenceservices/status
+  verbs:
+  - get

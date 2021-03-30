@@ -1,0 +1,20 @@
+# permissions for end users to view inferenceservices.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: inferenceservice-viewer-role
+rules:
+- apiGroups:
+  - serving.fuseml.suse
+  resources:
+  - inferenceservices
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - serving.fuseml.suse
+  resources:
+  - inferenceservices/status
+  verbs:
+  - get

@@ -1,0 +1,7 @@
+domain: fuseml.suse
+repo: fuseml.suse
+resources:
+- group: serving
+  kind: InferenceService
+  version: v1
+version: "2"

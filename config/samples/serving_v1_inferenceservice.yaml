@@ -1,0 +1,7 @@
+apiVersion: serving.fuseml.suse/v1
+kind: InferenceService
+metadata:
+  name: inferenceservice-sample
+spec:
+  # Add fields here
+  foo: bar
