@@ -56,7 +56,7 @@ func (r *KfservingReconciler) Reconcile() (*kfservingv1.InferenceServiceStatus, 
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, existing)
 	if err != nil {
 		if apierr.IsNotFound(err) {
-			log.Info("Creating knative service", "namespace", desired.Namespace, "name", desired.Name)
+			log.Info("Creating KFServing inference service", "namespace", desired.Namespace, "name", desired.Name)
 			return &desired.Status, r.client.Create(context.TODO(), desired)
 		}
 		return nil, err

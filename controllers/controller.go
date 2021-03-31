@@ -20,25 +20,30 @@ import (
 	"context"
 	"fmt"
 
-	servingv1 "fuseml.suse/api/v1"
-	"fuseml.suse/controllers/reconcilers/kfserving"
-	"fuseml.suse/controllers/utils"
 	"github.com/go-logr/logr"
-	kfservingv1 "github.com/kubeflow/kfserving/pkg/apis/serving/v1beta1"
-	"github.com/kubeflow/kfserving/pkg/constants"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierr "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	kfservingv1 "github.com/kubeflow/kfserving/pkg/apis/serving/v1beta1"
+	kfservingv1const "github.com/kubeflow/kfserving/pkg/constants"
+	seldonv1 "github.com/seldonio/seldon-core/operator/apis/machinelearning.seldon.io/v1"
+	seldonv1const "github.com/seldonio/seldon-core/operator/constants"
+
+	servingv1 "fuseml.suse/api/v1"
+	"fuseml.suse/controllers/reconcilers/kfserving"
+	"fuseml.suse/controllers/reconcilers/seldon"
+	"fuseml.suse/controllers/utils"
 )
 
 // InferenceServiceReconciler reconciles a InferenceService object
@@ -53,9 +58,11 @@ type InferenceServiceReconciler struct {
 // +kubebuilder:rbac:groups=serving.fuseml.suse,resources=inferenceservices/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=serving.kubeflow.org,resources=inferenceservices,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=serving.kubeflow.org,resources=inferenceservices/status,verbs=get
+// +kubebuilder:rbac:groups=machinelearning.seldon.io,resources=seldondeployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=machinelearning.seldon.io,resources=seldondeployments/status,verbs=get
 
-func (r *InferenceServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = context.Background()
+func (r *InferenceServiceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+	ctx := context.Background()
 	log := r.Log.WithValues("inferenceservice", req.NamespacedName)
 
 	// Fetch the InferenceService instance
@@ -70,7 +77,7 @@ func (r *InferenceServiceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	// name of our custom finalizer
-	finalizerName := "inferenceservice.finalizers"
+	finalizerName := "fuseml.inferenceservice.finalizers"
 
 	// examine DeletionTimestamp to determine if object is under deletion
 	if infSvc.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -98,9 +105,6 @@ func (r *InferenceServiceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	log.Info("Reconciling inference service", "apiVersion", infSvc.APIVersion, "isvc", infSvc.Name)
 
-	timeoutSeconds := int64(60)
-	defaultProtocol := constants.ProtocolV2
-
 	objectMeta := metav1.ObjectMeta{
 		Labels:      make(map[string]string),
 		Annotations: make(map[string]string),
@@ -115,6 +119,9 @@ func (r *InferenceServiceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if infSvc.Spec.Backend == "kfserving" {
+		timeoutSeconds := int64(60)
+		defaultProtocol := kfservingv1const.ProtocolV2
+		runtimeVersion := "0.2.1"
 		spec := kfservingv1.InferenceServiceSpec{
 			Predictor: kfservingv1.PredictorSpec{
 				ComponentExtensionSpec: kfservingv1.ComponentExtensionSpec{
@@ -127,6 +134,20 @@ func (r *InferenceServiceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 					PredictorExtensionSpec: kfservingv1.PredictorExtensionSpec{
 						StorageURI:      &infSvc.Spec.ModelUri,
 						ProtocolVersion: &defaultProtocol,
+						RuntimeVersion:  &runtimeVersion,
+						Container: v1.Container{
+							Name: "kfserving-container",
+							Resources: v1.ResourceRequirements{
+								Limits: v1.ResourceList{
+									"cpu":    resource.MustParse("1000m"),
+									"memory": resource.MustParse("2Gi"),
+								},
+								Requests: v1.ResourceList{
+									"cpu":    resource.MustParse("100m"),
+									"memory": resource.MustParse("128Mi"),
+								},
+							},
+						},
 					},
 				},
 			},
@@ -143,46 +164,42 @@ func (r *InferenceServiceReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return reconcile.Result{}, errors.Wrapf(err, "fails to reconcile kfserving inference service")
 		}
 
-		infSvc.Status.PropagateStatus(status)
+		infSvc.Status.PropagateStatusFromKfserving(status)
+	} else if infSvc.Spec.Backend == "seldon" {
+		replicas := int32(1)
+		impl := seldonv1.PredictiveUnitImplementation(seldonv1const.PrePackedServerSklearn)
+		spec := seldonv1.SeldonDeploymentSpec{
+			Name: infSvc.Name,
+			Predictors: []seldonv1.PredictorSpec{{
+				Name:     infSvc.Name,
+				Replicas: &replicas,
+				Graph: seldonv1.PredictiveUnit{
+					Implementation:   &impl,
+					ModelURI:         infSvc.Spec.ModelUri,
+					Name:             "classifier",
+					EnvSecretRefName: infSvc.Spec.ServiceAccountName,
+					Parameters: []seldonv1.Parameter{{
+						Name:  "method",
+						Type:  seldonv1.STRING,
+						Value: "predict",
+					}},
+				}},
+			},
+		}
+
+		seldonr := seldon.NewSeldonReconciler(r.Client, r.Scheme, objectMeta, &spec)
+
+		if err := controllerutil.SetControllerReference(infSvc, seldonr.Service, r.Scheme); err != nil {
+			return ctrl.Result{}, errors.Wrapf(err, "fails to set owner reference for predictor")
+		}
+
+		status, err := seldonr.Reconcile()
+		if err != nil {
+			return reconcile.Result{}, errors.Wrapf(err, "fails to reconcile seldon inference service")
+		}
+
+		infSvc.Status.PropagateStatusFromSeldon(status)
 	}
-	// } else if infSvc.Spec.Backend == "seldon" {
-	// 	replicas := int32(1)
-	// 	impl := seldonv1.PredictiveUnitImplementation(seldonv1const.PrePackedServerSklearn)
-	// 	spec := seldonv1.SeldonDeploymentSpec{
-	// 		Name: infSvc.Name,
-	// 		Predictors: []seldonv1.PredictorSpec{
-	// 			seldonv1.PredictorSpec{
-	// 				Name:     infSvc.Name,
-	// 				Replicas: &replicas,
-	// 				Graph: seldonv1.PredictiveUnit{
-	// 					Implementation: &impl,
-	// 					ModelURI:       infSvc.Spec.ModelUri,
-	// 					Name:           "classifier",
-	// 					Parameters: []seldonv1.Parameter{
-	// 						seldonv1.Parameter{
-	// 							Name:  "method",
-	// 							Type:  seldonv1.STRING,
-	// 							Value: "predict",
-	// 						},
-	// 					},
-	// 				},
-	// 			},
-	// 		},
-	// 	}
-
-	// 	seldonr := seldon.NewSeldonReconciler(r.Client, r.Scheme, objectMeta, &spec)
-
-	// 	if err := controllerutil.SetControllerReference(infSvc, seldonr.Service, r.Scheme); err != nil {
-	// 		return ctrl.Result{}, errors.Wrapf(err, "fails to set owner reference for predictor")
-	// 	}
-
-	// 	status, err := seldonr.Reconcile()
-	// 	if err != nil {
-	// 		return reconcile.Result{}, errors.Wrapf(err, "fails to reconcile kfserving inference service")
-	// 	}
-
-	// 	// infSvc.Status.PropagateStatus(status)
-	// }
 
 	if err := r.updateStatus(infSvc); err != nil {
 		r.Recorder.Eventf(infSvc, v1.EventTypeWarning, "InternalError", err.Error())
@@ -199,41 +216,47 @@ func (r *InferenceServiceReconciler) updateStatus(desiredService *servingv1.Infe
 		return err
 	}
 
-	wasReady := inferenceServiceReadiness(existingService.Status)
+	wasAvailable := isInferenceServiceAvailable(existingService.Status)
 	if equality.Semantic.DeepEqual(existingService.Status, desiredService.Status) {
 		// If we didn't change anything then don't call updateStatus.
 		// This is important because the copy we loaded from the informer's
 		// cache may be stale and we don't want to overwrite a prior update
 		// to status with this stale state.
 	} else if err := r.Status().Update(context.TODO(), desiredService); err != nil {
+		// It might happen that the reconciler tries to update an object that did not finish
+		// updating yet, in that case just ignore the error
+		switch se := err.(type) {
+		case *apierr.StatusError:
+			if se.Status().Reason == metav1.StatusReasonConflict {
+				return nil
+			}
+		}
 		r.Log.Error(err, "Failed to update InferenceService status", "InferenceService", desiredService.Name)
 		r.Recorder.Eventf(desiredService, v1.EventTypeWarning, "UpdateFailed",
 			"Failed to update status for InferenceService %q: %v", desiredService.Name, err)
 		return errors.Wrapf(err, "fails to update InferenceService status")
 	} else {
 		// If there was a difference and there was no error.
-		isReady := inferenceServiceReadiness(desiredService.Status)
-		if wasReady && !isReady { // Moved to NotReady State
-			r.Recorder.Eventf(desiredService, v1.EventTypeWarning, string(servingv1.InferenceServiceNotReadyState),
-				fmt.Sprintf("InferenceService [%v] is no longer Ready", desiredService.GetName()))
-		} else if !wasReady && isReady { // Moved to Ready State
-			r.Recorder.Eventf(desiredService, v1.EventTypeNormal, string(servingv1.InferenceServiceReadyState),
-				fmt.Sprintf("InferenceService [%v] is Ready", desiredService.GetName()))
+		isAvailable := isInferenceServiceAvailable(desiredService.Status)
+		if wasAvailable && !isAvailable { // Moved to a different State
+			r.Recorder.Eventf(desiredService, v1.EventTypeWarning, string(servingv1.StatusStateCreating),
+				fmt.Sprintf("InferenceService [%v] is no longer Available", desiredService.GetName()))
+		} else if !wasAvailable && isAvailable { // Moved to Available State
+			r.Recorder.Eventf(desiredService, v1.EventTypeNormal, string(servingv1.StatusStateAvailable),
+				fmt.Sprintf("InferenceService [%v] is Available", desiredService.GetName()))
 		}
 	}
 	return nil
-
 }
 
-func inferenceServiceReadiness(status servingv1.InferenceServiceStatus) bool {
-	return status.Conditions != nil &&
-		status.GetCondition(apis.ConditionReady) != nil &&
-		status.GetCondition(apis.ConditionReady).Status == v1.ConditionTrue
+func isInferenceServiceAvailable(status servingv1.InferenceServiceStatus) bool {
+	return status.Status == servingv1.StatusStateAvailable
 }
 
 func (r *InferenceServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&servingv1.InferenceService{}).
 		Owns(&kfservingv1.InferenceService{}).
+		Owns(&seldonv1.SeldonDeployment{}).
 		Complete(r)
 }

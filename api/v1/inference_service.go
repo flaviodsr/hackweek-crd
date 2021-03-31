@@ -47,12 +47,8 @@ type InferenceServiceSpec struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state"
 // +kubebuilder:printcolumn:name="URL",type="string",JSONPath=".status.url"
-// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
-// +kubebuilder:printcolumn:name="Prev",type="integer",JSONPath=".status.components.traffic[?(@.tag=='prev')].percent"
-// +kubebuilder:printcolumn:name="Latest",type="integer",JSONPath=".status.components.traffic[?(@.latestRevision==true)].percent"
-// +kubebuilder:printcolumn:name="PrevRolledoutRevision",type="string",JSONPath=".status.components.traffic[?(@.tag=='prev')].revisionName"
-// +kubebuilder:printcolumn:name="LatestReadyRevision",type="string",JSONPath=".status.components.traffic[?(@.latestRevision==true)].revisionName"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:resource:path=inferenceservices,shortName=fsvc
 

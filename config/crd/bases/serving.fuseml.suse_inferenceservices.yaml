@@ -9,23 +9,11 @@ metadata:
   name: inferenceservices.serving.fuseml.suse
 spec:
   additionalPrinterColumns:
+  - JSONPath: .status.state
+    name: State
+    type: string
   - JSONPath: .status.url
     name: URL
-    type: string
-  - JSONPath: .status.conditions[?(@.type=='Ready')].status
-    name: Ready
-    type: string
-  - JSONPath: .status.components.traffic[?(@.tag=='prev')].percent
-    name: Prev
-    type: integer
-  - JSONPath: .status.components.traffic[?(@.latestRevision==true)].percent
-    name: Latest
-    type: integer
-  - JSONPath: .status.components.traffic[?(@.tag=='prev')].revisionName
-    name: PrevRolledoutRevision
-    type: string
-  - JSONPath: .status.components.traffic[?(@.latestRevision==true)].revisionName
-    name: LatestReadyRevision
     type: string
   - JSONPath: .metadata.creationTimestamp
     name: Age
@@ -79,134 +67,8 @@ spec:
         status:
           description: InferenceServiceStatus defines the observed state of InferenceService
           properties:
-            annotations:
-              additionalProperties:
-                type: string
-              description: Annotations is additional Status fields for the Resource
-                to save some additional State as well as convey more information to
-                the user. This is roughly akin to Annotations on any k8s resource,
-                just the reconciler conveying richer information outwards.
-              type: object
-            components:
-              description: Statuses for the components of the InferenceService
-              properties:
-                address:
-                  description: Addressable endpoint for the InferenceService
-                  properties:
-                    url:
-                      type: string
-                  type: object
-                latestCreatedRevision:
-                  description: Latest revision name that is created
-                  type: string
-                latestReadyRevision:
-                  description: Latest revision name that is in ready state
-                  type: string
-                latestRolledoutRevision:
-                  description: Latest revision name that is rolled out with 100 percent
-                    traffic
-                  type: string
-                previousRolledoutRevision:
-                  description: Previous revision name that is rolled out with 100
-                    percent traffic
-                  type: string
-                traffic:
-                  description: Traffic holds the configured traffic distribution for
-                    latest ready revision and previous rolled out revision.
-                  items:
-                    description: TrafficTarget holds a single entry of the routing
-                      table for a Route.
-                    properties:
-                      configurationName:
-                        description: ConfigurationName of a configuration to whose
-                          latest revision we will send this portion of traffic. When
-                          the "status.latestReadyRevisionName" of the referenced configuration
-                          changes, we will automatically migrate traffic from the
-                          prior "latest ready" revision to the new one.  This field
-                          is never set in Route's status, only its spec.  This is
-                          mutually exclusive with RevisionName.
-                        type: string
-                      latestRevision:
-                        description: LatestRevision may be optionally provided to
-                          indicate that the latest ready Revision of the Configuration
-                          should be used for this traffic target.  When provided LatestRevision
-                          must be true if RevisionName is empty; it must be false
-                          when RevisionName is non-empty.
-                        type: boolean
-                      percent:
-                        description: 'Percent indicates that percentage based routing
-                          should be used and the value indicates the percent of traffic
-                          that is be routed to this Revision or Configuration. `0`
-                          (zero) mean no traffic, `100` means all traffic. When percentage
-                          based routing is being used the follow rules apply: - the
-                          sum of all percent values must equal 100 - when not specified,
-                          the implied value for `percent` is zero for   that particular
-                          Revision or Configuration'
-                        format: int64
-                        type: integer
-                      revisionName:
-                        description: RevisionName of a specific revision to which
-                          to send this portion of traffic.  This is mutually exclusive
-                          with ConfigurationName.
-                        type: string
-                      tag:
-                        description: Tag is optionally used to expose a dedicated
-                          url for referencing this target exclusively.
-                        type: string
-                      url:
-                        description: URL displays the URL for accessing named traffic
-                          targets. URL is displayed in status, and is disallowed on
-                          spec. URL must contain a scheme (e.g. http://) and a hostname,
-                          but may not contain anything else (e.g. basic auth, url
-                          path, etc.)
-                        type: string
-                    type: object
-                  type: array
-                url:
-                  description: URL holds the url that will distribute traffic over
-                    the provided traffic targets. It generally has the form http[s]://{route-name}.{route-namespace}.{cluster-level-suffix}
-                  type: string
-              type: object
-            conditions:
-              description: Conditions the latest available observations of a resource's
-                current state.
-              items:
-                description: 'Conditions defines a readiness condition for a Knative
-                  resource. See: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties'
-                properties:
-                  lastTransitionTime:
-                    description: LastTransitionTime is the last time the condition
-                      transitioned from one status to another. We use VolatileTime
-                      in place of metav1.Time to exclude this from creating equality.Semantic
-                      differences (all other things held constant).
-                    type: string
-                  message:
-                    description: A human readable message indicating details about
-                      the transition.
-                    type: string
-                  reason:
-                    description: The reason for the condition's last transition.
-                    type: string
-                  severity:
-                    description: Severity with which to treat failures of this type
-                      of condition. When this is not specified, it defaults to Error.
-                    type: string
-                  status:
-                    description: Status of the condition, one of True, False, Unknown.
-                    type: string
-                  type:
-                    description: Type of condition.
-                    type: string
-                required:
-                - status
-                - type
-                type: object
-              type: array
-            observedGeneration:
-              description: ObservedGeneration is the 'Generation' of the Service that
-                was last processed by the controller.
-              format: int64
-              type: integer
+            state:
+              type: string
             url:
               description: URL holds the url that will distribute traffic over the
                 provided traffic targets. It generally has the form http[s]://{route-name}.{route-namespace}.{cluster-level-suffix}

@@ -7,6 +7,24 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - machinelearning.seldon.io
+  resources:
+  - seldondeployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - machinelearning.seldon.io
+  resources:
+  - seldondeployments/status
+  verbs:
+  - get
+- apiGroups:
   - serving.fuseml.suse
   resources:
   - inferenceservices

@@ -21,6 +21,7 @@ import (
 	"os"
 
 	kfservingv1 "github.com/kubeflow/kfserving/pkg/apis/serving/v1beta1"
+	seldonv1 "github.com/seldonio/seldon-core/operator/apis/machinelearning.seldon.io/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -80,6 +81,12 @@ func main() {
 	log.Info("Setting up KFServing v1beta1 scheme")
 	if err := kfservingv1.AddToScheme(mgr.GetScheme()); err != nil {
 		log.Error(err, "unable to add KFServing v1beta1 to scheme")
+		os.Exit(1)
+	}
+
+	log.Info("Setting up SeldonCore v1 scheme")
+	if err := seldonv1.AddToScheme(mgr.GetScheme()); err != nil {
+		log.Error(err, "unable to add SeldonCore v1 to scheme")
 		os.Exit(1)
 	}
 

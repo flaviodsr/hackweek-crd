@@ -18,10 +18,8 @@ package v1
 
 import (
 	kfservingv1 "github.com/kubeflow/kfserving/pkg/apis/serving/v1beta1"
-	v1 "k8s.io/api/core/v1"
+	seldonv1 "github.com/seldonio/seldon-core/operator/apis/machinelearning.seldon.io/v1"
 	"knative.dev/pkg/apis"
-	duckv1 "knative.dev/pkg/apis/duck/v1"
-	knservingv1 "knative.dev/serving/pkg/apis/serving/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -32,81 +30,56 @@ type InferenceServiceStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Conditions for the InferenceService <br/>
-	// - PredictorReady: predictor readiness condition; <br/>
-	// - Ready: aggregated condition; <br/>
-	duckv1.Status `json:",inline"`
+	Status StatusState `json:"state,omitempty" protobuf:"string,1,opt,name=state"`
 
 	// URL holds the url that will distribute traffic over the provided traffic targets.
 	// It generally has the form http[s]://{route-name}.{route-namespace}.{cluster-level-suffix}
 	// +optional
 	URL *apis.URL `json:"url,omitempty"`
-
-	// Statuses for the components of the InferenceService
-	PredictorStatusSpec kfservingv1.ComponentStatusSpec `json:"components,omitempty"`
 }
 
+type StatusState string
+
+// CRD Status values
 const (
-	// PredictorReady is set when predictor has reported readiness.
-	KfservingReady apis.ConditionType = "KfservingReady"
+	StatusStateAvailable StatusState = "Available"
+	StatusStateCreating  StatusState = "Creating"
+	StatusStateFailed    StatusState = "Failed"
 )
 
-// InferenceService Ready condition is depending on predictor and route readiness condition
-var conditionSet = apis.NewLivingConditionSet(
-	KfservingReady,
-)
-
-var _ apis.ConditionsAccessor = (*InferenceServiceStatus)(nil)
-
-func (ss *InferenceServiceStatus) InitializeConditions() {
-	conditionSet.Manage(ss).InitializeConditions()
-}
-
-// IsReady returns if the service is ready to serve the requested configuration.
-func (ss *InferenceServiceStatus) IsReady() bool {
-	return conditionSet.Manage(ss).IsHappy()
-}
-
-// GetCondition returns the condition by name.
-func (ss *InferenceServiceStatus) GetCondition(t apis.ConditionType) *apis.Condition {
-	return conditionSet.Manage(ss).GetCondition(t)
-}
-
-// IsConditionReady returns the readiness for a given condition
-func (ss *InferenceServiceStatus) IsConditionReady(t apis.ConditionType) bool {
-	return conditionSet.Manage(ss).GetCondition(t) != nil && conditionSet.Manage(ss).GetCondition(t).Status == v1.ConditionTrue
-}
-
-// InferenceState describes the Readiness of the InferenceService
-type InferenceServiceState string
-
-// Different InferenceServiceState an InferenceService may have.
-const (
-	InferenceServiceReadyState    InferenceServiceState = "InferenceServiceReady"
-	InferenceServiceNotReadyState InferenceServiceState = "InferenceServiceNotReady"
-)
-
-func (ss *InferenceServiceStatus) PropagateStatus(serviceStatus *kfservingv1.InferenceServiceStatus) {
-	ss.PredictorStatusSpec = serviceStatus.Components["predictor"]
+func (ss *InferenceServiceStatus) PropagateStatusFromKfserving(serviceStatus *kfservingv1.InferenceServiceStatus) {
 	// propagate overall service condition
-	serviceCondition := serviceStatus.GetCondition(knservingv1.ServiceConditionReady)
-	if serviceCondition != nil && serviceCondition.Status == v1.ConditionTrue {
-		if serviceStatus.Address != nil {
-			ss.URL = serviceStatus.URL
+	if len(serviceStatus.Status.Conditions) <= 0 {
+		ss.Status = StatusStateCreating
+	} else {
+		status := serviceStatus.Status.Conditions[0].Status
+		switch status {
+		case "True":
+			if serviceStatus.Address != nil {
+				ss.Status = StatusStateAvailable
+				ss.URL = serviceStatus.URL
+			} else {
+				ss.Status = StatusStateCreating
+			}
+		case "False":
+			ss.Status = StatusStateFailed
+		default:
+			ss.Status = StatusStateCreating
 		}
 	}
-	ss.SetCondition(KfservingReady, serviceCondition)
-	ss.Status = serviceStatus.Status
 }
 
-func (ss *InferenceServiceStatus) SetCondition(conditionType apis.ConditionType, condition *apis.Condition) {
-	switch {
-	case condition == nil:
-	case condition.Status == v1.ConditionUnknown:
-		conditionSet.Manage(ss).MarkUnknown(conditionType, condition.Reason, condition.Message)
-	case condition.Status == v1.ConditionTrue:
-		conditionSet.Manage(ss).MarkTrue(conditionType)
-	case condition.Status == v1.ConditionFalse:
-		conditionSet.Manage(ss).MarkFalse(conditionType, condition.Reason, condition.Message)
+func (ss *InferenceServiceStatus) PropagateStatusFromSeldon(serviceStatus *seldonv1.SeldonDeploymentStatus) {
+	switch serviceStatus.State {
+	case seldonv1.StatusStateAvailable:
+		if serviceStatus.Address != nil {
+			url, _ := apis.ParseURL(serviceStatus.Address.URL)
+			ss.URL = url
+		}
+		ss.Status = StatusStateAvailable
+	case seldonv1.StatusStateFailed:
+		ss.Status = StatusStateFailed
+	default:
+		ss.Status = StatusStateCreating
 	}
 }
