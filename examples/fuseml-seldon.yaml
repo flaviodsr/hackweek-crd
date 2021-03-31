@@ -1,0 +1,8 @@
+apiVersion: serving.fuseml.suse/v1
+kind: InferenceService
+metadata:
+  name: "test-mlseldon"
+spec:
+  backend: "seldon"
+  modelUri: "s3://mlflow-artifacts/1/ffb67ff8fba2458aaa11e8308dd83c86/artifacts/model"
+  serviceAccountName: "workspace-mlflow-527370765-init-container-secret"

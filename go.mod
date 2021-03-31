@@ -17,7 +17,6 @@ require (
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/utils v0.0.0-20200912215256-4140de9c8800 // indirect
 	knative.dev/pkg v0.0.0-20200922164940-4bf40ad82aab
-	knative.dev/serving v0.18.0
 	sigs.k8s.io/controller-runtime v0.7.0
 )
 

@@ -1,0 +1,8 @@
+apiVersion: serving.fuseml.suse/v1
+kind: InferenceService
+metadata:
+  name: "test-mlkfserving"
+spec:
+  backend: "kfserving"
+  modelUri: "s3://mlflow-artifacts/2/f4ca8d38cad04be493f5ab44b6b01e2d/artifacts/model"
+  serviceAccountName: "workspace-mlflow-527370766-kfserving"
